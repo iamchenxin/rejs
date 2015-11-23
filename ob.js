@@ -32,11 +32,11 @@ var _OpNode = (function () {
             return newNode;
         }
     }, {
-        key: "_CheckRoot",
+        key: "_InitRoot",
         value: function _CheckRoot(root) {
             if (root instanceof Creations) {
                 if (root._inPlace) {
-                    root._inPlaceInit();
+                    root._InitFunc();
                 }
             }
         }
@@ -82,7 +82,7 @@ var _OpNode = (function () {
             var rootToLeafChain = child._RefToRoot();
 
             if (checkRoot) {
-                this._CheckRoot(rootToLeafChain._rootToLeafChain[0]);
+                this._InitRoot(rootToLeafChain._rootToLeafChain[0]);
             }
             return child;
         }
@@ -219,7 +219,7 @@ var Creations = (function (_Operators2) {
 
         var _this3 = _possibleConstructorReturn(this, Object.getPrototypeOf(Creations).call(this, parent, func));
 
-        _this3._inPlaceInit = inPlaceInit;
+        _this3._InitFunc = inPlaceInit;
         _this3._inPlace = inPlace;
         return _this3;
     }

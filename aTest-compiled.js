@@ -27,8 +27,9 @@ function Test1() {
         console.log("s4 v= " + v);
     });
 
+    console.log("single~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
     s4.Update(7);
-    //    root.Update(3);
+    s4.UpdateMe(88);
 
     console.log("end ..");
 }

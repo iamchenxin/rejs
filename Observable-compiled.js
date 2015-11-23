@@ -18,7 +18,7 @@ var _OpNode = (function () {
         _classCallCheck(this, _OpNode);
 
         this._parent = parent;
-        this._children = new Array();
+        this._children = [];
 
         this._func = func;
         this._refCount = 0;
@@ -32,35 +32,11 @@ var _OpNode = (function () {
             return newNode;
         }
     }, {
-        key: "_CheckRoot",
-        value: function _CheckRoot(root) {
-            if (root instanceof Creations) {
-                if (root._inPlace) {
-                    root._inPlaceInit(root);
-                }
-            }
-        }
-    }, {
-        key: "_LeafTraceToRoot",
-        value: function _LeafTraceToRoot(refCount) {
-            var buildChain = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
+        key: "_ThisToRoot",
 
-            var node = this;
-            var leafToRootChain = [];
-
-            do {
-                if (buildChain) {
-                    leafToRootChain.push(node);
-                }
-
-                node._refCount += refCount;
-                node = node._parent;
-            } while (node != null);
-            return leafToRootChain;
-        }
-    }, {
-        key: "_LeafToRoot",
-        value: function _LeafToRoot(action) {
+        // ------------
+        value: function _ThisToRoot(action) {
+            // action(node)
             var node = this;
             do {
                 action(node);
@@ -68,60 +44,49 @@ var _OpNode = (function () {
             } while (node != null);
         }
     }, {
-        key: "_RefToRoot2",
-        value: function _RefToRoot2() {
-            var refv = arguments.length <= 0 || arguments[0] === undefined ? 1 : arguments[0];
-
-            _LeafToRoot(function (node) {
-                return node._refCount += refv;
-            });
+        key: "_IfRoot",
+        value: function _IfRoot() {
+            if (this._parent == null) {
+                return this;
+            }
         }
     }, {
         key: "_RefToRoot",
         value: function _RefToRoot() {
-            return this._LeafTraceToRoot(1);
+            var refv = arguments.length <= 0 || arguments[0] === undefined ? 1 : arguments[0];
+
+            this._ThisToRoot(function (node) {
+                return node._refCount += refv;
+            });
         }
     }, {
         key: "_UnRefToRoot",
         value: function _UnRefToRoot() {
-            return this._LeafTraceToRoot(-1);
+            return this._RefToRoot(-1);
         }
     }, {
-        key: "_Subscribe",
-        value: function _Subscribe(func) {
-            var checkRoot = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
+        key: "_BuildRootToThisChain",
+        value: function _BuildRootToThisChain() {
+            var thisToRootChain = [];
+            var cloneNode = null;
+            this._ThisToRoot(function (node) {
+                return thisToRootChain.push(node);
+            });
 
-            var child = this._CreateChild(func);
-            var leafToRootChain = child._RefToRoot();
-
-            if (checkRoot) {
-                var rootToLeafChain = this._RootToLeafChain(leafToRootChain);
-                this._CheckRoot(rootToLeafChain[0]);
-            }
-            return child;
-        }
-    }, {
-        key: "_UnSubscribe",
-        value: function _UnSubscribe() {
-            this._UnRefToRoot();
-            return null;
-        }
-    }, {
-        key: "_Excute",
-        value: function _Excute(inarg) {
-            if (this._refCount == 0) return;
-
-            var arg = this._func(inarg);
-
+            thisToRootChain.reverse();
+            var rootToThisChain = [];
+            var tmpNode = null;
             var _iteratorNormalCompletion = true;
             var _didIteratorError = false;
             var _iteratorError = undefined;
 
             try {
-                for (var _iterator = this._children[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                    var child = _step.value;
+                for (var _iterator = thisToRootChain[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                    var node = _step.value;
 
-                    child._Excute(arg);
+                    tmpNode = node._ShallowClone(tmpNode);
+                    tmpNode._refCount += 1;
+                    rootToThisChain.push(tmpNode);
                 }
             } catch (err) {
                 _didIteratorError = true;
@@ -137,22 +102,74 @@ var _OpNode = (function () {
                     }
                 }
             }
+
+            return rootToThisChain;
         }
     }, {
-        key: "_RootToLeafChain",
-        value: function _RootToLeafChain(leafToRootChain) {
-            var rootToLeafChain = [];
+        key: "_GetRoot",
+        value: function _GetRoot() {
+            var root = null;
+            this._ThisToRoot(function (node) {
+                root = node._IfRoot();
+            });
+            return root;
+        }
+        // <<< ---
 
-            leafToRootChain.reverse();
-            var node = leafToRootChain[0].ShallowClone(null);
-            node._refCount += 1;
-            rootToLeafChain.push(node);
-            for (var i = 1; i < leafToRootChain.length; i++) {
-                node = leafToRootChain[i].ShallowClone(node);
+    }, {
+        key: "_Subscribe",
+        value: function _Subscribe(func) {
+            var InitRoot = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
+
+            var child = this._CreateChild(func);
+
+            var root = null;
+            child._ThisToRoot(function (node) {
                 node._refCount += 1;
-                rootToLeafChain.push(node);
+                root = node._IfRoot();
+            });
+
+            if (InitRoot) {
+                _OpNode._InitRoot(child._BuildRootToThisChain());
             }
-            return rootToLeafChain;
+            return child;
+        }
+    }, {
+        key: "_UnSubscribe",
+        value: function _UnSubscribe() {
+            this._UnRefToRoot();
+            return null;
+        }
+    }, {
+        key: "_Excute",
+        value: function _Excute(inarg) {
+            if (this._refCount == 0) return;
+
+            var arg = this._func(inarg);
+            var _iteratorNormalCompletion2 = true;
+            var _didIteratorError2 = false;
+            var _iteratorError2 = undefined;
+
+            try {
+                for (var _iterator2 = this._children[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+                    var child = _step2.value;
+
+                    child._Excute(arg);
+                }
+            } catch (err) {
+                _didIteratorError2 = true;
+                _iteratorError2 = err;
+            } finally {
+                try {
+                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
+                        _iterator2.return();
+                    }
+                } finally {
+                    if (_didIteratorError2) {
+                        throw _iteratorError2;
+                    }
+                }
+            }
         }
 
         // Transforming base
@@ -166,6 +183,16 @@ var _OpNode = (function () {
         key: "_Create",
         value: function _Create(func) {
             return new Operators(null, func);
+        }
+    }, {
+        key: "_InitRoot",
+        value: function _InitRoot(rootToThisChain) {
+            var root = rootToThisChain[0];
+            if (root instanceof Creations) {
+                if (root._inPlace) {
+                    root._InitFunc(root);
+                }
+            }
         }
     }]);
 
@@ -182,6 +209,15 @@ var Operators = (function (_OpNode2) {
     }
 
     _createClass(Operators, [{
+        key: "_ShallowClone",
+        value: function _ShallowClone(parent) {
+            var node = new Operators(parent, this._func);
+            if (parent) {
+                parent._children[0] = node;
+            }
+            return node;
+        }
+    }, {
         key: "Subscribe",
         value: function Subscribe(func) {
             return this._Subscribe(func);
@@ -199,81 +235,42 @@ var Operators = (function (_OpNode2) {
     }, {
         key: "Update",
         value: function Update(value) {
-            var leafToRoot = this._LeafTraceToRoot(0);
-            leafToRoot[leafToRoot.length - 1]._Excute(value);
+            var root = this._GetRoot();
+            root._Excute(value);
         }
     }, {
         key: "UpdateMe",
-        value: function UpdateMe() {
-            var rootToLeafChain = arguments.length <= 0 || arguments[0] === undefined ? [] : arguments[0];
-
-            if (rootToLeafChain == false) {
-
-                //  rootToLeafChain =
-            }
-        }
-    }, {
-        key: "UpdateAll",
-        value: function UpdateAll() {}
-    }, {
-        key: "ShallowClone",
-        value: function ShallowClone(parent) {
-            var node = new Operators(parent, this._func);
-            if (parent) {
-                parent._children[0] = node;
-            }
-            return node;
+        value: function UpdateMe(value) {
+            var rootToThisChain = this._BuildRootToThisChain(); // make a clone path leaf to root
+            var root = rootToThisChain[0];
+            root._Excute(value);
         }
     }]);
 
     return Operators;
 })(_OpNode);
 
-var RootToLeafChain = (function (_Operators) {
-    _inherits(RootToLeafChain, _Operators);
-
-    function RootToLeafChain(leafToRootChain) {
-        _classCallCheck(this, RootToLeafChain);
-
-        var _this2 = _possibleConstructorReturn(this, Object.getPrototypeOf(RootToLeafChain).call(this, null, null));
-
-        _this2._rootToLeafChain = [];
-
-        leafToRootChain.reverse();
-        var node = leafToRootChain[0].ShallowClone(null);
-        _this2._rootToLeafChain.push(node);
-        for (var i = 1; i < leafToRootChain.length; i++) {
-            node = leafToRootChain[i].ShallowClone(node);
-            _this2._rootToLeafChain.push(node);
-        }
-
-        return _this2;
-    }
-
-    return RootToLeafChain;
-})(Operators);
-
 // all Creations are static ,there are factory
 
-var Creations = (function (_Operators2) {
-    _inherits(Creations, _Operators2);
+var Creations = (function (_Operators) {
+    _inherits(Creations, _Operators);
 
-    function Creations(parent, func, inPlaceInit) {
+    function Creations(parent, func, InitFunc) {
         var inPlace = arguments.length <= 3 || arguments[3] === undefined ? true : arguments[3];
 
         _classCallCheck(this, Creations);
 
-        var _this3 = _possibleConstructorReturn(this, Object.getPrototypeOf(Creations).call(this, parent, func));
+        var _this2 = _possibleConstructorReturn(this, Object.getPrototypeOf(Creations).call(this, parent, func));
 
-        _this3._inPlaceInit = inPlaceInit;
-        _this3._inPlace = inPlace;
-        return _this3;
+        _this2._InitFunc = InitFunc;
+        _this2._inPlace = inPlace;
+        return _this2;
     }
 
     _createClass(Creations, [{
-        key: "ShallowClone",
-        value: function ShallowClone(parent) {
-            var node = new Creations(parent, this._func, this._inPlaceInit, this._inPlace);
+        key: "_ShallowClone",
+        value: function _ShallowClone(parent) {
+            var node = new Creations(parent, this._func, this._InitFunc, this._inPlace);
             if (parent) {
                 parent._children[0] = node;
             }
@@ -296,19 +293,19 @@ var Creations = (function (_Operators2) {
     return Creations;
 })(Operators);
 
-var Observer = (function (_Operators3) {
-    _inherits(Observer, _Operators3);
+var Observer = (function (_Operators2) {
+    _inherits(Observer, _Operators2);
 
     function Observer(parent, func) {
         _classCallCheck(this, Observer);
 
-        var _this4 = _possibleConstructorReturn(this, Object.getPrototypeOf(Observer).call(this, parent, func));
+        var _this3 = _possibleConstructorReturn(this, Object.getPrototypeOf(Observer).call(this, parent, func));
 
-        _this4._subscriptions = [];
+        _this3._subscriptions = [];
         if (parent) {
-            _this4._subscriptions.push(parent);
+            _this3._subscriptions.push(parent);
         }
-        return _this4;
+        return _this3;
     }
 
     _createClass(Observer, [{

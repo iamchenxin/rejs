@@ -10,7 +10,7 @@ class _OpNode
 {
     constructor(parent, func) {
         this._parent = parent;
-        this._children = new Array();
+        this._children = [];
 
         this._func = func;
         this._refCount = 0;
@@ -26,28 +26,17 @@ class _OpNode
         return newNode;
     }
 
-    _CheckRoot(root) {
+    static _InitRoot(rootToThisChain) {
+        let root = rootToThisChain[0];
         if (root instanceof Creations) {
             if (root._inPlace) {
-                root._inPlaceInit(root);
+                root._InitFunc(root);
             }
         }
     }
 
-    _LeafTraceToRoot(refCount, buildChain = true) {
-        let node = this;
-        let leafToRootChain = [];
-
-        do {
-            if (buildChain) { leafToRootChain.push(node); }
-
-            node._refCount += refCount;
-            node = node._parent;
-        } while (node != null);
-        return leafToRootChain;
-    }
-
-    _LeafToRoot(action){
+// ------------
+    _ThisToRoot(action){ // action(node)
         let node = this;
         do{
             action(node);
@@ -55,25 +44,53 @@ class _OpNode
         }while (node != null);
     }
 
-    _RefToRoot2(refv=1){
-        _LeafToRoot(node=>node._refCount+=refv);
+    _IfRoot(){
+        if(this._parent==null){
+            return this;
+        }
     }
-
-    _RefToRoot() {
-        return this._LeafTraceToRoot(1);
+    _RefToRoot(refv=1){
+        this._ThisToRoot(node=>node._refCount+=refv);
     }
-
     _UnRefToRoot() {
-        return this._LeafTraceToRoot(-1);
+        return this._RefToRoot(-1);
     }
+    _BuildRootToThisChain(){
+        let thisToRootChain = [];
+        let cloneNode=null;
+        this._ThisToRoot(node=> thisToRootChain.push(node));
 
-    _Subscribe(func, checkRoot = true) {
+        thisToRootChain.reverse();
+        let rootToThisChain = [];
+        let tmpNode =null;
+        for(let node of thisToRootChain){
+            tmpNode = node._ShallowClone(tmpNode);
+            tmpNode._refCount+=1;
+            rootToThisChain.push(tmpNode);
+        }
+        return rootToThisChain;
+    }
+    _GetRoot(){
+        let root=null;
+        this._ThisToRoot(node=>{
+            root=node._IfRoot();
+        });
+        return root;
+    }
+// <<< ---
+
+
+    _Subscribe(func, InitRoot = true) {
         let child = this._CreateChild(func);
-        let leafToRootChain = child._RefToRoot();
 
-        if (checkRoot) {
-            let rootToLeafChain = this._RootToLeafChain(leafToRootChain);
-            this._CheckRoot(rootToLeafChain[0]);
+        let root=null;
+        child._ThisToRoot(node=>{
+            node._refCount+=1;
+            root=node._IfRoot();
+        });
+
+        if (InitRoot) {
+            _OpNode._InitRoot(child._BuildRootToThisChain());
         }
         return child;
     }
@@ -87,25 +104,9 @@ class _OpNode
         if (this._refCount == 0) return;
 
         let arg = this._func(inarg);
-
         for (let child of this._children) {
             child._Excute(arg);
         }
-    }
-
-    _RootToLeafChain(leafToRootChain){
-        let rootToLeafChain = [];
-
-        leafToRootChain.reverse();
-        let node = leafToRootChain[0].ShallowClone(null);
-        node._refCount+=1;
-        rootToLeafChain.push(node);
-        for (let i = 1; i < leafToRootChain.length ; i++) {
-            node = leafToRootChain[i].ShallowClone(node);
-            node._refCount+=1;
-            rootToLeafChain.push(node);
-        }
-        return rootToLeafChain;
     }
 
     // Transforming base
@@ -118,6 +119,11 @@ class _OpNode
 
 class Operators extends _OpNode
 {
+    _ShallowClone(parent){
+        let node =new Operators(parent, this._func);
+        if(parent){parent._children[0]=node;}
+        return  node;
+    }
 
     Subscribe(func) {
         return this._Subscribe(func);
@@ -131,58 +137,33 @@ class Operators extends _OpNode
         return this._Op_Transform(func);
     }
 
-
     Update(value) {
-        let leafToRoot = this._LeafTraceToRoot(0);
-        leafToRoot[leafToRoot.length-1]._Excute(value);
+        let root = this._GetRoot();
+        root._Excute(value);
     }
 
-    UpdateMe(rootToLeafChain=[]) {
-        if(rootToLeafChain==false){
-
-          //  rootToLeafChain =
-        }
-    }
-
-
-    UpdateAll() {
-
-    }
-
-    ShallowClone(parent){
-        let node =new Operators(parent, this._func);
-        if(parent){parent._children[0]=node;}
-        return  node;
+    UpdateMe(value) {
+        let rootToThisChain = this._BuildRootToThisChain(); // make a clone path leaf to root
+        let root = rootToThisChain[0];
+        root._Excute(value);
     }
 
 }
 
-class RootToLeafChain extends Operators {
-
-    constructor(leafToRootChain) {
-        super(null, null);
-        this._rootToLeafChain = [];
-
-        leafToRootChain.reverse();
-        let node = leafToRootChain[0].ShallowClone(null);
-        this._rootToLeafChain.push(node);
-        for (let i = 1; i < leafToRootChain.length ; i++) {
-            node = leafToRootChain[i].ShallowClone(node);
-            this._rootToLeafChain.push(node);
-        }
-
-    }
-
-}
 
 // all Creations are static ,there are factory
 class Creations extends Operators {
 
-    constructor(parent, func, inPlaceInit, inPlace=true) {
+    constructor(parent, func, InitFunc, inPlace=true) {
         super(parent, func);
 
-        this._inPlaceInit = inPlaceInit;
+        this._InitFunc = InitFunc;
         this._inPlace = inPlace;
+    }
+    _ShallowClone(parent){
+        let node = new Creations(parent,this._func,this._InitFunc,this._inPlace);
+        if(parent){parent._children[0]=node;}
+        return  node;
     }
 
     static InPlace(inPlaceFunc) {
@@ -193,11 +174,8 @@ class Creations extends Operators {
         return new Creations(null, func, null, false);
     }
 
-    ShallowClone(parent){
-        let node = new Creations(parent,this._func,this._inPlaceInit,this._inPlace);
-        if(parent){parent._children[0]=node;}
-        return  node;
-    }
+
+
 }
 
 class Observer extends Operators {
