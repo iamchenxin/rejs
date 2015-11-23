@@ -3,6 +3,7 @@
 function OBSERVER_EXCEPTION(message) {
     this._message = message;
     this.name = "OBSERVER_EXCEPTION";
+
 }
 
 class _OpNode
@@ -28,42 +29,51 @@ class _OpNode
     _CheckRoot(root) {
         if (root instanceof Creations) {
             if (root._inPlace) {
-                root._inPlaceInit();
+                root._inPlaceInit(root);
             }
         }
     }
 
-    _LeafToRootRefcount(step, checkRoot = true, buildChain = true) {
+    _LeafTraceToRoot(refCount, buildChain = true) {
         let node = this;
         let leafToRootChain = [];
-        let rootToLeafChain = null;
 
         do {
             if (buildChain) { leafToRootChain.push(node); }
 
-            node._refCount += step;
+            node._refCount += refCount;
             node = node._parent;
         } while (node != null);
-        if (checkRoot) {
-            rootToLeafChain = new RootToLeafChain(leafToRootChain);
-        }
-        return rootToLeafChain;
+        return leafToRootChain;
+    }
+
+    _LeafToRoot(action){
+        let node = this;
+        do{
+            action(node);
+            node = node._parent;
+        }while (node != null);
+    }
+
+    _RefToRoot2(refv=1){
+        _LeafToRoot(node=>node._refCount+=refv);
     }
 
     _RefToRoot() {
-        this._LeafToRootRefcount(1);
+        return this._LeafTraceToRoot(1);
     }
 
     _UnRefToRoot() {
-        this._LeafToRootRefcount(-1);
+        return this._LeafTraceToRoot(-1);
     }
 
     _Subscribe(func, checkRoot = true) {
         let child = this._CreateChild(func);
-        let rootToLeafChain = child._RefToRoot();
+        let leafToRootChain = child._RefToRoot();
 
         if (checkRoot) {
-            this._CheckRoot(rootToLeafChain._rootToLeafChain[0]);
+            let rootToLeafChain = this._RootToLeafChain(leafToRootChain);
+            this._CheckRoot(rootToLeafChain[0]);
         }
         return child;
     }
@@ -83,10 +93,27 @@ class _OpNode
         }
     }
 
+    _RootToLeafChain(leafToRootChain){
+        let rootToLeafChain = [];
+
+        leafToRootChain.reverse();
+        let node = leafToRootChain[0].ShallowClone(null);
+        node._refCount+=1;
+        rootToLeafChain.push(node);
+        for (let i = 1; i < leafToRootChain.length ; i++) {
+            node = leafToRootChain[i].ShallowClone(node);
+            node._refCount+=1;
+            rootToLeafChain.push(node);
+        }
+        return rootToLeafChain;
+    }
+
     // Transforming base
     _Op_Transform(func) {
         return this._CreateChild(func);
     }
+
+
 }
 
 class Operators extends _OpNode
@@ -105,23 +132,28 @@ class Operators extends _OpNode
     }
 
 
-    Update() {
-
+    Update(value) {
+        let leafToRoot = this._LeafTraceToRoot(0);
+        leafToRoot[leafToRoot.length-1]._Excute(value);
     }
 
-    UpdateMe() {
+    UpdateMe(rootToLeafChain=[]) {
+        if(rootToLeafChain==false){
 
+          //  rootToLeafChain =
+        }
     }
 
-    Update(observer1, observer2, observer3) {
-
-    }
 
     UpdateAll() {
 
     }
 
-
+    ShallowClone(parent){
+        let node =new Operators(parent, this._func);
+        if(parent){parent._children[0]=node;}
+        return  node;
+    }
 
 }
 
@@ -132,10 +164,10 @@ class RootToLeafChain extends Operators {
         this._rootToLeafChain = [];
 
         leafToRootChain.reverse();
-        let node = new Operators(null, leafToRootChain[0]._func);
+        let node = leafToRootChain[0].ShallowClone(null);
         this._rootToLeafChain.push(node);
         for (let i = 1; i < leafToRootChain.length ; i++) {
-            node = new Operators(node, leafToRootChain[i]._func);
+            node = leafToRootChain[i].ShallowClone(node);
             this._rootToLeafChain.push(node);
         }
 
@@ -161,6 +193,11 @@ class Creations extends Operators {
         return new Creations(null, func, null, false);
     }
 
+    ShallowClone(parent){
+        let node = new Creations(parent,this._func,this._inPlaceInit,this._inPlace);
+        if(parent){parent._children[0]=node;}
+        return  node;
+    }
 }
 
 class Observer extends Operators {

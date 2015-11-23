@@ -36,42 +36,55 @@ var _OpNode = (function () {
         value: function _CheckRoot(root) {
             if (root instanceof Creations) {
                 if (root._inPlace) {
-                    root._inPlaceInit();
+                    root._inPlaceInit(root);
                 }
             }
         }
     }, {
         key: "_LeafTraceToRoot",
-        value: function _LeafToRootRefcount(step) {
-            var checkRoot = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
-            var buildChain = arguments.length <= 2 || arguments[2] === undefined ? true : arguments[2];
+        value: function _LeafTraceToRoot(refCount) {
+            var buildChain = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
 
             var node = this;
             var leafToRootChain = [];
-            var rootToLeafChain = null;
 
             do {
                 if (buildChain) {
                     leafToRootChain.push(node);
                 }
 
-                node._refCount += step;
+                node._refCount += refCount;
                 node = node._parent;
             } while (node != null);
-            if (checkRoot) {
-                rootToLeafChain = new RootToLeafChain(leafToRootChain);
-            }
-            return rootToLeafChain;
+            return leafToRootChain;
+        }
+    }, {
+        key: "_LeafToRoot",
+        value: function _LeafToRoot(action) {
+            var node = this;
+            do {
+                action(node);
+                node = node._parent;
+            } while (node != null);
+        }
+    }, {
+        key: "_RefToRoot2",
+        value: function _RefToRoot2() {
+            var refv = arguments.length <= 0 || arguments[0] === undefined ? 1 : arguments[0];
+
+            _LeafToRoot(function (node) {
+                return node._refCount += refv;
+            });
         }
     }, {
         key: "_RefToRoot",
         value: function _RefToRoot() {
-            this._LeafTraceToRoot(1);
+            return this._LeafTraceToRoot(1);
         }
     }, {
         key: "_UnRefToRoot",
         value: function _UnRefToRoot() {
-            this._LeafTraceToRoot(-1);
+            return this._LeafTraceToRoot(-1);
         }
     }, {
         key: "_Subscribe",
@@ -79,10 +92,11 @@ var _OpNode = (function () {
             var checkRoot = arguments.length <= 1 || arguments[1] === undefined ? true : arguments[1];
 
             var child = this._CreateChild(func);
-            var rootToLeafChain = child._RefToRoot();
+            var leafToRootChain = child._RefToRoot();
 
             if (checkRoot) {
-                this._CheckRoot(rootToLeafChain._rootToLeafChain[0]);
+                var rootToLeafChain = this._RootToLeafChain(leafToRootChain);
+                this._CheckRoot(rootToLeafChain[0]);
             }
             return child;
         }
@@ -123,6 +137,22 @@ var _OpNode = (function () {
                     }
                 }
             }
+        }
+    }, {
+        key: "_RootToLeafChain",
+        value: function _RootToLeafChain(leafToRootChain) {
+            var rootToLeafChain = [];
+
+            leafToRootChain.reverse();
+            var node = leafToRootChain[0].ShallowClone(null);
+            node._refCount += 1;
+            rootToLeafChain.push(node);
+            for (var i = 1; i < leafToRootChain.length; i++) {
+                node = leafToRootChain[i].ShallowClone(node);
+                node._refCount += 1;
+                rootToLeafChain.push(node);
+            }
+            return rootToLeafChain;
         }
 
         // Transforming base
@@ -168,16 +198,32 @@ var Operators = (function (_OpNode2) {
         }
     }, {
         key: "Update",
-        value: function Update() {}
+        value: function Update(value) {
+            var leafToRoot = this._LeafTraceToRoot(0);
+            leafToRoot[leafToRoot.length - 1]._Excute(value);
+        }
     }, {
         key: "UpdateMe",
-        value: function UpdateMe() {}
-    }, {
-        key: "Update",
-        value: function Update(observer1, observer2, observer3) {}
+        value: function UpdateMe() {
+            var rootToLeafChain = arguments.length <= 0 || arguments[0] === undefined ? [] : arguments[0];
+
+            if (rootToLeafChain == false) {
+
+                //  rootToLeafChain =
+            }
+        }
     }, {
         key: "UpdateAll",
         value: function UpdateAll() {}
+    }, {
+        key: "ShallowClone",
+        value: function ShallowClone(parent) {
+            var node = new Operators(parent, this._func);
+            if (parent) {
+                parent._children[0] = node;
+            }
+            return node;
+        }
     }]);
 
     return Operators;
@@ -194,10 +240,10 @@ var RootToLeafChain = (function (_Operators) {
         _this2._rootToLeafChain = [];
 
         leafToRootChain.reverse();
-        var node = new Operators(null, leafToRootChain[0]._func);
+        var node = leafToRootChain[0].ShallowClone(null);
         _this2._rootToLeafChain.push(node);
         for (var i = 1; i < leafToRootChain.length; i++) {
-            node = new Operators(node, leafToRootChain[i]._func);
+            node = leafToRootChain[i].ShallowClone(node);
             _this2._rootToLeafChain.push(node);
         }
 
@@ -224,7 +270,16 @@ var Creations = (function (_Operators2) {
         return _this3;
     }
 
-    _createClass(Creations, null, [{
+    _createClass(Creations, [{
+        key: "ShallowClone",
+        value: function ShallowClone(parent) {
+            var node = new Creations(parent, this._func, this._inPlaceInit, this._inPlace);
+            if (parent) {
+                parent._children[0] = node;
+            }
+            return node;
+        }
+    }], [{
         key: "InPlace",
         value: function InPlace(inPlaceFunc) {
             return new Creations(null, function (v) {
@@ -279,3 +334,5 @@ var Observer = (function (_Operators3) {
 exports.Operators = Operators;
 exports.Creations = Creations;
 exports.Observer = Observer;
+
+//# sourceMappingURL=Observable-compiled.js.map
